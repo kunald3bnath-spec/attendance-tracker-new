@@ -50,22 +50,59 @@ fun HistoryScreen(
 
     val selectedMember = members.find { it.id == selectedMemberId }
 
+    var filterEnabled by remember { mutableStateOf(false) }
+    var startDateMillis by remember { mutableStateOf<Long?>(null) }
+    var endDateMillis by remember { mutableStateOf<Long?>(null) }
+
+    var showStartDatePicker by remember { mutableStateOf(false) }
+    var showEndDatePicker by remember { mutableStateOf(false) }
+
     // Human readable parsing helpers
     val dateParseFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
     val monthNameFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.US) }
     val dayNameFormat = remember { SimpleDateFormat("EEEE, MMM d, yyyy", Locale.US) }
 
+    val startDateStr = remember(startDateMillis) {
+        startDateMillis?.let {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            sdf.format(Date(it))
+        }
+    }
+
+    val endDateStr = remember(endDateMillis) {
+        endDateMillis?.let {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            sdf.format(Date(it))
+        }
+    }
+
+    // Filter raw history records
+    val filteredHistoryRecords = remember(rawHistoryRecords, filterEnabled, startDateStr, endDateStr) {
+        if (!filterEnabled) {
+            rawHistoryRecords
+        } else {
+            rawHistoryRecords.filter { record ->
+                val dateStr = record.dateString
+                val afterStart = startDateStr == null || dateStr >= startDateStr
+                val beforeEnd = endDateStr == null || dateStr <= endDateStr
+                afterStart && beforeEnd
+            }
+        }
+    }
+
     // Compute stats
-    val totalRecords = rawHistoryRecords.size
-    val presentRecords = rawHistoryRecords.count { it.isPresent }
+    val totalRecords = filteredHistoryRecords.size
+    val presentRecords = filteredHistoryRecords.count { it.isPresent }
     val absentRecords = totalRecords - presentRecords
     val attendanceRate = if (totalRecords > 0) {
         (presentRecords.toFloat() / totalRecords * 100).toInt()
     } else 0
 
     // Group records by Month string (e.g. "June 2026")
-    val groupedHistory = remember(rawHistoryRecords) {
-        rawHistoryRecords.groupBy { record ->
+    val groupedHistory = remember(filteredHistoryRecords) {
+        filteredHistoryRecords.groupBy { record ->
             try {
                 val date = dateParseFormat.parse(record.dateString)
                 monthNameFormat.format(date!!)
@@ -220,6 +257,140 @@ fun HistoryScreen(
                     // Loading or invalid
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
                 } else {
+                    // Bento Date Range Filter Card
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        shape = RoundedCornerShape(24.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CalendarMonth,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = "Filter by date range",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Switch(
+                                    checked = filterEnabled,
+                                    onCheckedChange = { filterEnabled = it },
+                                    modifier = Modifier.testTag("date_filter_switch")
+                                )
+                            }
+
+                            if (filterEnabled) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Start date selection button
+                                    OutlinedButton(
+                                        onClick = { showStartDatePicker = true },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f).testTag("start_date_filter_btn"),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = "START DATE",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = startDateStr?.let {
+                                                    try {
+                                                        val date = dateParseFormat.parse(it)
+                                                        SimpleDateFormat("MMM d, yyyy", Locale.US).format(date!!)
+                                                    } catch(e: Exception) { it }
+                                                } ?: "Select date",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+
+                                    // End date selection button
+                                    OutlinedButton(
+                                        onClick = { showEndDatePicker = true },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f).testTag("end_date_filter_btn"),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = "END DATE",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = endDateStr?.let {
+                                                    try {
+                                                        val date = dateParseFormat.parse(it)
+                                                        SimpleDateFormat("MMM d, yyyy", Locale.US).format(date!!)
+                                                    } catch(e: Exception) { it }
+                                                } ?: "Select date",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (startDateStr != null || endDateStr != null) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    TextButton(
+                                        onClick = {
+                                            startDateMillis = null
+                                            endDateMillis = null
+                                        },
+                                        modifier = Modifier.align(Alignment.End).testTag("clear_dates_btn")
+                                    ) {
+                                        Text(
+                                            text = "Clear Dates",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     // Summary Stats Card (Bento Style Card)
                     Card(
                         modifier = Modifier
@@ -356,6 +527,66 @@ fun HistoryScreen(
                     }
                 }
             }
+        }
+    }
+
+    if (showStartDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = startDateMillis ?: System.currentTimeMillis()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showStartDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        startDateMillis = datePickerState.selectedDateMillis
+                        showStartDatePicker = false
+                    },
+                    modifier = Modifier.testTag("confirm_start_date_btn")
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showStartDatePicker = false },
+                    modifier = Modifier.testTag("cancel_start_date_btn")
+                ) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showEndDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = endDateMillis ?: System.currentTimeMillis()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showEndDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        endDateMillis = datePickerState.selectedDateMillis
+                        showEndDatePicker = false
+                    },
+                    modifier = Modifier.testTag("confirm_end_date_btn")
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showEndDatePicker = false },
+                    modifier = Modifier.testTag("cancel_end_date_btn")
+                ) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
         }
     }
 }
