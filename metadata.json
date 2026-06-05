@@ -1,0 +1,6 @@
+{
+  "name": "Attendance Tracker",
+  "description": "A professional attendance tracking app with multi-project support, inline customizable calendar, and heatmap overview.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
